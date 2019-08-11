@@ -348,15 +348,19 @@ galvan_tc_name <- tc_gr %>%
 
 comb_tc_names <- bind_rows(briscoe_lease_names, galvan_tc_name) %>%
   mutate(tc_name = paste0(tc_region, "_", tc_sub, "_", zone, "_", 
-                          h2s, "_", cc_dec, "_",eff_lat, "_", spacing))
+                          h2s, "_", cc_dec, "_",eff_lat, "_", spacing),
+         id = row_number())
 
+##  join comb tc and res_mod to get id=============================
+
+res_mod$id <- comb_tc_names[match(res_mod$tc_name, comb_tc_names$tc_name),11]
+
+#na_count <- sapply(res_mod, function(y) sum(is.na(y)))
 ##  create tc lookup tbl============================================
 
 tc_comb <- bind_rows(tc_br, tc_gr)
 
 prop <- unique(tc_comb$PROPNUM)
-length(unique(tc_comb$LEASE))
-length(unique(tc_comb$PROPNUM))
 
 #i<-1
 tc_lookup <- data.frame()
@@ -374,11 +378,21 @@ for(i in seq_along(prop)){
   HYP_D1 <- tc_tmp[4,8];
   HYP_Q4 <- tc_tmp[5,3];
   HYP_DMIN <- tc_tmp[5,8];
-  YIELD_Q1 <- tc_tmp[6,2];
-  YIELD_Q2 <- tc_tmp[6,3];
-  YIELD_T1 <- tc_tmp[6,5];
-  YIELD_Q3 <- tc_tmp[7,2];
-  YIELD_Q4 <- tc_tmp[7,3];
+  if(tc_tmp[6,1]=="OIL/GAS"){
+    YIELD_Q1 <- tc_tmp[6,2];
+    YIELD_Q2 <- tc_tmp[6,3];
+    YIELD_T1 <- tc_tmp[6,5];
+    YIELD_Q3 <- tc_tmp[7,2];
+    YIELD_Q4 <- tc_tmp[7,3];
+  }else{
+    YIELD_Q1 <- 0;
+    YIELD_Q2 <- 0;
+    YIELD_T1 <- 0;
+    YIELD_Q3 <- 0;
+    YIELD_Q4 <- 0;
+    
+  }
+
 
   tc_tmp2 <- data.frame(LEASE, BU_Q1, BU_T1, BU_D1, EXP_Q1, EXP_T1, EXP_D1, 
                         HYP_T1, HYP_B1, HYP_D1, HYP_Q4, HYP_DMIN, 
@@ -392,14 +406,14 @@ for(i in seq_along(prop)){
 
 tc_lookup <- left_join(tc_lookup, 
                        comb_tc_names %>%
-                         select(LEASE, tc_name), by = "LEASE") %>%
+                         select(LEASE, id, tc_name), by = "LEASE") %>%
   na.omit() %>%
-  select(tc_name, BU_Q1, BU_T1, BU_D1, EXP_Q1, EXP_T1, EXP_D1,
+  select(tc_name, id, BU_Q1, BU_T1, BU_D1, EXP_Q1, EXP_T1, EXP_D1,
          HYP_T1, HYP_B1, HYP_D1, HYP_Q4, HYP_DMIN, YIELD_Q1, YIELD_Q2,
          YIELD_T1, YIELD_Q3, YIELD_Q4)
   
 
-na_count <- sapply(tc_lookup, function(y) sum(is.na(y)))
+#na_count <- sapply(tc_lookup, function(y) sum(is.na(y)))
 ##  open connect to access==========================================
 
 ##doc property
@@ -430,11 +444,12 @@ ac_p <- AC_PROPERTY %>%
   slice(1:nrow(res_mod))
 
 res_mod$PROPNUM <- ac_p$PROPNUM
+res_mod$id <- as.character(res_mod$id)
 
 ##  ac_property key
 ##  corp13 = scenario | corp14 = tc_name | corp15 = tc_zone
 
-#ac_p$CORP12 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),1]
+ac_p$CORP12 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),16]
 ac_p$CORP13 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),1]
 ac_p$CORP14 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),2]
 ac_p$CORP15 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),13]
@@ -450,10 +465,6 @@ ac_p$FRAC_DESIGN <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),15]
 AC_PROPERTY <- bind_rows(AC_PROPERTY %>%
                            filter(CORP10 != "UPSIDE"), 
                          ac_p)
-dt<-AC_PROPERTY %>%
-  filter(CORP10 != "UPSIDE")
-#columnTypes <- names(select_if(AC_PROPERTY, is.POSIXt))
-
 
 columnTypes <- list(OIL_DIF_DATE="datetime", DATE_COMP="datetime", FIRST_PROD="datetime", INC_END_DATE="datetime", PROP_SPUD="datetime", 
                     PROP_CMPL="datetime", PROP_SALES="datetime", PROP_TBG="datetime", PROP_AL="datetime", LAST_UPDATE_DATE="datetime")
