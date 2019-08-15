@@ -111,8 +111,10 @@ res_h_tc_region <- c("H_EAST", "H_WEST")
 res_mod_awest <- c("A2W", "A4W", "A6W")
 res_mod_aeast <- c("A4E", "A6E", "A10E")
 res_cc_dec_no_zone <- c("AREAE", "AREAF", "AREAG", "AREAK", "AREAHJ")
-  
-  
+res_district_north <- c("BRISA", "E20", "E45", "E50", "E75", "F100", "F55", "F70", "F75", "H_WEST", "K30", "K45")
+res_distric_east <- c("A10E", "A12", "A2", "A20", "A40", "A4W", "A6E", "C2")
+res_distric_south <- c("B10", "B20", "B3", "B40", "C0", "C20", "C7", "D0")
+
 ##  build resource model table
 res_mod <- dt_res %>% ##  fix h2s column
   filter(tc_sub_region %in% res_h2s &
@@ -164,8 +166,22 @@ res_mod <- dt_res %>% ##  fix h2s column
          frac_design = case_when(tc_region == "A_WEST" | tc_region == "A_EAST" ~ "SW_420_FULL_PRIME", 
                                  tc_region == "C" ~ "SW_340_FULL_PRIME", 
                                  tc_region == "BRISA" ~ "SSW_525_FULL_PRIME", 
-                                 TRUE ~ "SW_540_FULL_PRIME")) %>%
-  arrange(scenario, tc_region)
+                                 TRUE ~ "SW_540_FULL_PRIME"), 
+         intan_cmpl = if_else(h2s == "H2S" | zone == "IEF", 200, 0), 
+         district = case_when(tc_sub %in% res_distric_east ~ "EAST",
+                              tc_sub %in% res_distric_south ~ "SOUTH", 
+                              TRUE ~ "NORTH"), 
+         wtr_loe = if_else(team == "BRISEF", 2.08, 3.15), 
+         woe = if_else(team == "BRISEF", 657, 421), 
+         loe = case_when(district == "NORTH" ~ 4867, 
+                         district == "SOUTH" ~ 4536, 
+                         TRUE ~ 4044), 
+         intan_drl = case_when(zone == "LEF" & h2s == "H2S" & tc_region == "C" ~ 0.27, 
+                               zone == "LEF" & h2s == "H2S" ~ 0.50, 
+                               zone == "UEF" & h2s == "H2S" ~ 0.31, 
+                                TRUE ~ 0)) %>%
+  arrange(scenario, tc_region) %>%
+  mutate(lease = paste0(scenario,"_",row_number()))
 
 res_mod$tc_sub <- str_replace(res_mod$tc_sub, "A6W", "A4W")
 res_mod$tc_name <- str_replace(res_mod$tc_name, "A6W", "A4W")
@@ -175,6 +191,15 @@ res_mod$tc_sub <- str_replace(res_mod$tc_sub, "A6E", "A10E")
 res_mod$tc_name <- str_replace(res_mod$tc_name, "A6E", "A10E")
 res_mod$tc_sub <- str_replace(res_mod$tc_sub, "A4E", "A6E")
 res_mod$tc_name <- str_replace(res_mod$tc_name, "A4E", "A6E")
+
+
+##  when you use group_by it changes the class of the data table to a tbl 
+##  and it is not compatiable with a regular data table
+#res_mod <- res_mod %>%
+#  group_by(scenario) %>%
+#  mutate(row_count = row_number(), 
+#         well_name = paste0(scenario, "_", row_count)) %>%
+#  ungroup()
 
 
 
@@ -220,7 +245,7 @@ briscoe_lease_names <- tc_br %>%
                      h2s = if_else(grepl("H2S", L2), "H2S", "NOH2S"),
                      cc_dec = paste0(word(L2, -2),"_",word(L2, 3)))) %>%
   bind_rows(tc_br %>% 
-              filter(LEASE %in% br_d & !LEASE %in% br_cc_3.7 & !LEASE %in% br_areab_6) %>%
+              filter(LEASE %in% br_bd & !LEASE %in% br_cc_3.7 & !LEASE %in% br_areab_6) %>%
               distinct(LEASE) %>%
               mutate(L1 = gsub("-", " ", LEASE), 
                      L2 = gsub("/", " ", L1),
@@ -260,7 +285,7 @@ briscoe_lease_names <- tc_br %>%
               distinct(LEASE) %>%
               mutate(L1 = gsub("-", " ", LEASE), 
                      L2 = gsub("/", " ", L1),
-                     tc_region = substr(word(L2, 2), start = 1, stop = 1),
+                     tc_region = "F_WEST",
                      tc_sub = word(L2, 2),
                      eff_lat = word(L2, -1), 
                      zone = word(L2, 3), 
@@ -295,6 +320,10 @@ briscoe_lease_names <- tc_br %>%
                    cc_dec = word(L2, -2))) %>% 
   select(LEASE, tc_region, tc_sub, eff_lat, zone, spacing, h2s, cc_dec) %>%
   mutate(TEAM = "BRISCOE")
+
+
+
+write.csv(briscoe_lease_names, file = "br.csv")
 
 ##  galvan lookup tbl===================================================
 
@@ -440,31 +469,55 @@ i <- sapply(AC_PROPERTY, is.factor)
 AC_PROPERTY[i] <- lapply(AC_PROPERTY[i], as.character)
 
 ac_p <- AC_PROPERTY %>% 
+  arrange(PROPNUM) %>%
   filter(CORP10 == "UPSIDE") %>%
   slice(1:nrow(res_mod))
 
 res_mod$PROPNUM <- ac_p$PROPNUM
-res_mod$id <- as.character(res_mod$id)
+#res_mod$id <- as.character(res_mod$id)
+
+
+res_mod <- res_mod %>%
+  mutate(id = as.character(id),
+         lease = as.character(lease),
+         eff_lat = as.numeric(eff_lat), 
+         spacing = as.numeric(spacing))
 
 ##  ac_property key
-##  corp13 = scenario | corp14 = tc_name | corp15 = tc_zone
+##  corp11 = H2S | corp12 = id | corp13 = scenario | corp14 = tc_name | corp15 = tc_zone
 
-ac_p$CORP12 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),16]
+ac_p$LEASE <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM), 22]
+ac_p$CORP11 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM), 7]
+ac_p$CORP12 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),23]
 ac_p$CORP13 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),1]
 ac_p$CORP14 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),2]
 ac_p$CORP15 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),13]
 ac_p$TEAM <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM), 14]
-ac_p$EFF_LAT <- as.numeric(res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM), 9])
+ac_p$EFF_LAT <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM), 9]
 ac_p$ZONE <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM), 4]
-ac_p$WELL_SPACING_PLAN_VIEW <- as.numeric(res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),10])
+ac_p$WELL_SPACING_PLAN_VIEW <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),10]
 ac_p$TYPE_CURVE_REGION <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM), 5]
 ac_p$TYPE_CURVE_SUBREGION <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM), 6]
 ac_p$CORPCALL_DEC <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),8]
 ac_p$FRAC_DESIGN <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),15]
+ac_p$LOE <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),20]
+ac_p$WOE <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),19]
+ac_p$WTR_LOE1 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),18]
+ac_p$WTR_LOE2 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),18]
+ac_p$DISTRICT <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),17]
+ac_p$INTAN_CMPL <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),16]
+ac_p$INTAN_DRL <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),21]
 
 AC_PROPERTY <- bind_rows(AC_PROPERTY %>%
                            filter(CORP10 != "UPSIDE"), 
                          ac_p)
+
+
+AC_PROPERTY %>%
+  filter(PROPNUM == "K93MF61KKN") %>%
+  select(PROPNUM, LEASE)
+
+
 
 columnTypes <- list(OIL_DIF_DATE="datetime", DATE_COMP="datetime", FIRST_PROD="datetime", INC_END_DATE="datetime", PROP_SPUD="datetime", 
                     PROP_CMPL="datetime", PROP_SALES="datetime", PROP_TBG="datetime", PROP_AL="datetime", LAST_UPDATE_DATE="datetime")
@@ -486,6 +539,7 @@ close(ch)
 write.csv(tc_lookup, file = "tc_lookup.csv")
 write.csv(comb_tc_names, file = "tc_names.csv")
 write.csv(res_mod, file = "res_mod.csv")
+write.csv(AC_PROPERTY, file = "acp.csv")
 
 
 res_mod %>%
