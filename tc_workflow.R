@@ -1,12 +1,12 @@
 rm(list = ls())
 
 #load("C:/Users/mfarr/Documents/R_files/Spotfire.data/typecurves.RData")
-resource <- na.omit(read.csv("etc_strip_8_7.csv", stringsAsFactors = FALSE))
+#resource <- na.omit(read.csv("etc_strip_8_7.csv", stringsAsFactors = FALSE))
 tc_br <- na.omit(read.csv("briscoe_tc.csv", stringsAsFactors = FALSE))
 tc_gr <- na.omit(read.csv("galvan_tc.csv", stringsAsFactors = FALSE))
+resource <- na.omit(read.csv("etc_update_res_model.csv", stringsAsFactors = FALSE))
 
-
-##  load packages=============================================================================
+##  load packages==============================================================
 suppressWarnings(library(dplyr,warn.conflicts=FALSE))
 #suppressWarnings(library(broom, warn.conflicts = FALSE))
 #suppressWarnings(library(tidyr, warn.conflicts = FALSE))
@@ -15,7 +15,7 @@ suppressWarnings(library(stringr, warn.conflicts = FALSE))
 #suppressWarnings(library(purrr,warn.conflicts=FALSE))
 #suppressWarnings(library(tidyr,warn.conflicts=FALSE))
 
-##  define functions=========================================================================
+##  define functions===========================================================
 
 ##  function to id date time columes in data tables
 is.POSIXt <- function(x) inherits(x, "POSIXt")
@@ -33,7 +33,7 @@ clean_dt <- function(x) {
 }
 
   
-##  data cleanup=============================================================================
+##  data cleanup===============================================================
 
 ## get a list of data.frames
 file.names<-ls()[sapply(ls(), function(x) class(get(x))) == 'data.frame']
@@ -44,6 +44,7 @@ for(i in 1:length(file.names)){
   tmp<- get(file.names[i])
   names(tmp)<-gsub("-","", names(tmp))
   names(tmp)<-gsub(" ", "_", names(tmp))
+  names(tmp)<-gsub("\\.", "_", names(tmp))
   names(tmp)<-gsub("[()]", "", names(tmp))
   names(tmp)<-gsub("/","_",  names(tmp))
   names(tmp)<-gsub("\\%", "", names(tmp))
@@ -51,6 +52,10 @@ for(i in 1:length(file.names)){
   rm(tmp)
   
 }
+
+res1 <- clean_dt(resource)
+names(resource)
+gsub("\\.", "_", names(resource))
 
 ##  for loop to remove all attribute (except for datetime columes)
 for(i in seq_along(file.names)){
@@ -76,7 +81,8 @@ for(i in seq_along(file.names)){
   }
 }
 
-##  build resource model table===========================================
+##  build resource model table from dsu spreasheet=============================
+
 
 ##  lateral length bins for tbl cleanup
 lat_lngth <- c("7000", "10000", "13000", "16000")
@@ -193,6 +199,10 @@ res_mod$tc_sub <- str_replace(res_mod$tc_sub, "A4E", "A6E")
 res_mod$tc_name <- str_replace(res_mod$tc_name, "A4E", "A6E")
 
 
+res_mod %>%
+  group_by(scenario, zone) %>%
+  summarise(sum(well_count))
+
 ##  when you use group_by it changes the class of the data table to a tbl 
 ##  and it is not compatiable with a regular data table
 #res_mod <- res_mod %>%
@@ -205,8 +215,7 @@ res_mod$tc_name <- str_replace(res_mod$tc_name, "A4E", "A6E")
 
 #write.csv(res_mod, file = "res_mod.csv")
 
-
-##  briscoe lookup tbl===================================================
+##  build briscoe lookup tbl===================================================
 
 br_lease_names <- unique(tc_br$LEASE)
 br_saa <- br_lease_names[grepl("SA A", br_lease_names)]
@@ -323,9 +332,7 @@ briscoe_lease_names <- tc_br %>%
 
 
 
-write.csv(briscoe_lease_names, file = "br.csv")
-
-##  galvan lookup tbl===================================================
+##  build galvan lookup tbl====================================================
 
 lease_gr <- unique(tc_gr$LEASE)
 a_west <- lease_gr[grepl("W", lease_gr)]
@@ -446,15 +453,14 @@ tc_lookup <- left_join(tc_lookup,
 ##  open connect to access==========================================
 
 ##doc property
-#AccessFilePath <- "C:/Users/mfarr/Documents/Aries db/etc_resource_model.accdb"
-AccessFilePath <- "N:/Dept/Prod/Aries/Db/Houston/2019 Projects/ETC Renegotiation WIG/etc_resource_model.accdb"
+AccessFilePath <- "C:/Users/mfarr/Documents/Aries db/etc_resource_model.accdb"
+#AccessFilePath <- "N:/Dept/Prod/Aries/Db/Houston/2019 Projects/ETC Renegotiation WIG/etc_resource_model.accdb"
 driver <- "Driver={Microsoft Access Driver (*.mdb, *.accdb)}"
 dLocation <- AccessFilePath
 ch <- odbcDriverConnect(paste(driver,';DBQ=',dLocation))
 
 
 ##  check if table already exist====================================
-#check_tbl <- c("TcCum", "TcForecast", "TcParameters", "TcWellList")
 access_tbl <- sqlTables(ch)[3]
 
 
@@ -470,7 +476,7 @@ AC_PROPERTY[i] <- lapply(AC_PROPERTY[i], as.character)
 
 ac_p <- AC_PROPERTY %>% 
   arrange(PROPNUM) %>%
-  filter(CORP10 == "UPSIDE") %>%
+  filter(CORP10 == "UPSIDE" | CORP10 == "EXTRA") %>%
   slice(1:nrow(res_mod))
 
 res_mod$PROPNUM <- ac_p$PROPNUM
@@ -483,10 +489,13 @@ res_mod <- res_mod %>%
          eff_lat = as.numeric(eff_lat), 
          spacing = as.numeric(spacing))
 
-##  ac_property key
-##  corp11 = H2S | corp12 = id | corp13 = scenario | corp14 = tc_name | corp15 = tc_zone
+##  ac_property key  ##
+##  corp11 = H2S | corp12 = lookup id | corp13 = scenario | corp14 = tc_name | corp15 = tc_zone
+##  wtr_loe1 = water disposal cost 1 | wtr_loe2 = water disposal cost 2 | intan_cmpl = ultrafab cost
+##  intan_drl = h2s gas trans cost
 
 ac_p$LEASE <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM), 22]
+ac_p$CORP10 <- "UPSIDE"
 ac_p$CORP11 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM), 7]
 ac_p$CORP12 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),23]
 ac_p$CORP13 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),1]
@@ -514,10 +523,10 @@ AC_PROPERTY <- bind_rows(AC_PROPERTY %>%
 
 
 AC_PROPERTY %>%
-  filter(PROPNUM == "K93MF61KKN") %>%
-  select(PROPNUM, LEASE)
+  filter(PROPNUM == "U8AALCSBBH") %>%
+  select(PROPNUM, LEASE, INTAN_CMPL, INTAN_DRL)
 
-
+##  write table to access===========================================
 
 columnTypes <- list(OIL_DIF_DATE="datetime", DATE_COMP="datetime", FIRST_PROD="datetime", INC_END_DATE="datetime", PROP_SPUD="datetime", 
                     PROP_CMPL="datetime", PROP_SALES="datetime", PROP_TBG="datetime", PROP_AL="datetime", LAST_UPDATE_DATE="datetime")
