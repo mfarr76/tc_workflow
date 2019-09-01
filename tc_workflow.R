@@ -422,7 +422,6 @@ tc_lookup <- left_join(tc_lookup,
   select(tc_name, id, BU_Q1, BU_T1, BU_D1, EXP_Q1, EXP_T1, EXP_D1,
          HYP_T1, HYP_B1, HYP_D1, HYP_Q4, HYP_DMIN, YIELD_Q1, YIELD_Q2,
          YIELD_T1, YIELD_Q3, YIELD_Q4)
-  
 
 #na_count <- sapply(tc_lookup, function(y) sum(is.na(y)))
 #write.csv(tc_lookup, file = "lookup.csv")
@@ -431,7 +430,7 @@ tc_lookup <- left_join(tc_lookup,
 
 ##doc property
 #AccessFilePath <- "C:/Users/mfarr/Documents/Aries db/etc_resource_model.accdb"
-AccessFilePath <- "N:/Dept/Prod/Aries/Db/Houston/2019 Projects/ETC Renegotiation WIG/etc_resource_model.accdb"
+AccessFilePath <- "N:/Dept/Prod/Aries/Db/Houston/2019 Projects/ETC Renegotiation WIG/etc_resource_model_update.accdb"
 driver <- "Driver={Microsoft Access Driver (*.mdb, *.accdb)}"
 dLocation <- AccessFilePath
 ch <- odbcDriverConnect(paste(driver,';DBQ=',dLocation))
@@ -453,7 +452,7 @@ AC_PROPERTY[i] <- lapply(AC_PROPERTY[i], as.character)
 
 ac_p <- AC_PROPERTY %>% 
   arrange(PROPNUM) %>%
-  filter(CORP10 == "UPSIDE" | CORP10 == "EXTRA") %>%
+  filter(CORP8 == "RM") %>%
   slice(1:nrow(res_mod))
 
 res_mod$PROPNUM <- ac_p$PROPNUM
@@ -465,6 +464,8 @@ res_mod <- res_mod %>%
          lease = as.character(lease),
          eff_lat = as.numeric(eff_lat), 
          spacing = as.numeric(spacing))
+
+##  update ac_property with new wells===============================
 
 ##  ac_property key  ##
 ##  corp9 spacing_uid | corp11 = H2S | corp12 = lookup id | corp13 = scenario | corp14 = tc_name | 
@@ -498,12 +499,20 @@ ac_p$DISTRICT <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),18]
 ac_p$INTAN_CMPL <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),17]
 ac_p$INTAN_DRL <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),22]
 
+rm_prop <- unique(ac_p$PROPNUM)
+
+
+
 AC_PROPERTY <- bind_rows(AC_PROPERTY %>%
-                           filter(CORP10 != "UPSIDE"), 
+                           filter(!PROPNUM %in% rm_prop), 
                          ac_p)
 
+#write.csv(ac_p, file = "acp.csv")
+#write.csv(AC_PROPERTY1, file = "acprop.csv")
+
+
 AC_PROPERTY %>%
-  filter(PROPNUM == "U8AALCSBBH") %>%
+  filter(PROPNUM == "U8I2M2MM5B") %>%
   select(PROPNUM, LEASE, INTAN_CMPL, INTAN_DRL)
 
 ##  write table to access===========================================
