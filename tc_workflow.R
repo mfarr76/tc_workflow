@@ -4,7 +4,8 @@ rm(list = ls())
 #resource <- na.omit(read.csv("etc_strip_8_7.csv", stringsAsFactors = FALSE))
 tc_br <- na.omit(read.csv("briscoe_tc.csv", stringsAsFactors = FALSE))
 tc_gr <- na.omit(read.csv("galvan_tc.csv", stringsAsFactors = FALSE))
-resource <- na.omit(read.csv("etc_update_res_model.csv", stringsAsFactors = FALSE))
+#resource <- na.omit(read.csv("etc_update_res_model.csv", stringsAsFactors = FALSE))
+resource <- na.omit(read.csv("etc_update_res_model_MKT_UPDATE_2.csv", stringsAsFactors = FALSE))
 
 ##  load packages==============================================================
 suppressWarnings(library(dplyr,warn.conflicts=FALSE))
@@ -430,7 +431,7 @@ tc_lookup <- left_join(tc_lookup,
 
 ##doc property
 #AccessFilePath <- "C:/Users/mfarr/Documents/Aries db/etc_resource_model.accdb"
-AccessFilePath <- "N:/Dept/Prod/Aries/Db/Houston/2019 Projects/ETC Renegotiation WIG/etc_resource_model_update.accdb"
+AccessFilePath <- "N:/Dept/Prod/Aries/Db/Houston/2019 Projects/ETC Renegotiation WIG/etc_resource_model_mkt_update.accdb"
 driver <- "Driver={Microsoft Access Driver (*.mdb, *.accdb)}"
 dLocation <- AccessFilePath
 ch <- odbcDriverConnect(paste(driver,';DBQ=',dLocation))
@@ -441,7 +442,7 @@ access_tbl <- sqlTables(ch)[3]
 
 
 ##  load table from access==========================================
-AC_PROPERTY <- sqlQuery(ch, paste("select * from AC_PROPERTY"))
+AC_PROPERTY <- sqlQuery(ch, paste("select * from AC_PROPERTY"), as.is = TRUE)
 #AC_ECONOMIC <- sqlQuery(ch, paste("select * from AC_ECONOMIC"))
 #ARLOOKUP <- sqlQuery(ch, paste("select * from ARLOOKUP"))
 
@@ -449,10 +450,13 @@ close(ch)
 
 i <- sapply(AC_PROPERTY, is.factor)
 AC_PROPERTY[i] <- lapply(AC_PROPERTY[i], as.character)
+#AC_PROPERTY$CORP12 <- as.character(AC_PROPERTY$CORP12)
+#AC_PROPERTY$CORP9 <- as.character(AC_PROPERTY$CORP9)
 
 ac_p <- AC_PROPERTY %>% 
   arrange(PROPNUM) %>%
-  filter(CORP8 == "RM") %>%
+  ##CORP_RYDER used for RM and NON_RM
+  filter(CORP_RYDER == "RM") %>%
   slice(1:nrow(res_mod))
 
 res_mod$PROPNUM <- ac_p$PROPNUM
@@ -477,6 +481,7 @@ res_mod <- res_mod %>%
 
 ac_p$LEASE <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM), 23]
 ac_p$CORP9 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM), 2]
+#ac_p$CORP8 <- "UPSIDE"
 ac_p$CORP10 <- "UPSIDE"
 ac_p$CORP11 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM), 8]
 ac_p$CORP12 <- res_mod[match(ac_p$PROPNUM, res_mod$PROPNUM),24]
